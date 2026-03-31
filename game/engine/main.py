@@ -31,11 +31,25 @@ from dataclasses import dataclass
 
 BOARD = [['.'] * 8 for _ in range(8)]
 NO_PROMOTION = '\0'
+W_K_CASTLE = False
+W_Q_CASTLE = False
+B_K_CASTLE = False
+B_Q_CASTLE = False
 
 
 def load_board(board64):
     for index, piece in enumerate(board64):
         BOARD[index // 8][index % 8] = piece
+
+
+def load_castling_rights(rights_str):
+    global W_K_CASTLE, W_Q_CASTLE, B_K_CASTLE, B_Q_CASTLE
+    W_K_CASTLE = W_Q_CASTLE = B_K_CASTLE = B_Q_CASTLE = False
+    for char in rights_str:
+        if char == 'K': W_K_CASTLE = True
+        elif char == 'Q': W_Q_CASTLE = True
+        elif char == 'k': B_K_CASTLE = True
+        elif char == 'q': B_Q_CASTLE = True
 
 
 def serialize_board():
@@ -176,8 +190,27 @@ def valid_queen(fr, fc, tr, tc):
     return valid_rook(fr, fc, tr, tc) or valid_bishop(fr, fc, tr, tc)
 
 
-def valid_king(fr, fc, tr, tc):
-    return abs(tr - fr) <= 1 and abs(tc - fc) <= 1
+def valid_king(color, fr, fc, tr, tc):
+    if abs(tr - fr) <= 1 and abs(tc - fc) <= 1:
+        return True
+        
+    if fr == tr and abs(tc - fc) == 2:
+        if color == 'white' and fr == 7 and fc == 4:
+            if tc == 6 and W_K_CASTLE and is_empty(BOARD[7][5]) and is_empty(BOARD[7][6]):
+                if not is_square_attacked(7, 4, 'black') and not is_square_attacked(7, 5, 'black') and not is_square_attacked(7, 6, 'black'):
+                    return True
+            if tc == 2 and W_Q_CASTLE and is_empty(BOARD[7][3]) and is_empty(BOARD[7][2]) and is_empty(BOARD[7][1]):
+                if not is_square_attacked(7, 4, 'black') and not is_square_attacked(7, 3, 'black') and not is_square_attacked(7, 2, 'black'):
+                    return True
+        elif color == 'black' and fr == 0 and fc == 4:
+            if tc == 6 and B_K_CASTLE and is_empty(BOARD[0][5]) and is_empty(BOARD[0][6]):
+                if not is_square_attacked(0, 4, 'white') and not is_square_attacked(0, 5, 'white') and not is_square_attacked(0, 6, 'white'):
+                    return True
+            if tc == 2 and B_Q_CASTLE and is_empty(BOARD[0][3]) and is_empty(BOARD[0][2]) and is_empty(BOARD[0][1]):
+                if not is_square_attacked(0, 4, 'white') and not is_square_attacked(0, 3, 'white') and not is_square_attacked(0, 2, 'white'):
+                    return True
+                    
+    return False
 
 
 def validate_move(turn, fr, fc, tr, tc, silent=False):
@@ -199,7 +232,7 @@ def validate_move(turn, fr, fc, tr, tc, silent=False):
         'n': lambda: valid_knight(fr, fc, tr, tc),
         'b': lambda: valid_bishop(fr, fc, tr, tc),
         'q': lambda: valid_queen(fr, fc, tr, tc),
-        'k': lambda: valid_king(fr, fc, tr, tc),
+        'k': lambda: valid_king(turn, fr, fc, tr, tc),
     }
     is_valid = validators.get(piece.lower(), lambda: False)()
 
@@ -236,12 +269,25 @@ def leaves_king_in_check(move, side):
     BOARD[move.tr][move.tc] = move.promo_piece if move.promo_piece != NO_PROMOTION else src_piece
     BOARD[move.fr][move.fc] = '.'
 
+    rook_fr, rook_fc, rook_tr, rook_tc = -1, -1, -1, -1
+    if src_piece.lower() == 'k' and abs(move.tc - move.fc) == 2:
+        if move.tc == 6:
+            rook_fr, rook_fc, rook_tr, rook_tc = move.fr, 7, move.tr, 5
+        elif move.tc == 2:
+            rook_fr, rook_fc, rook_tr, rook_tc = move.fr, 0, move.tr, 3
+        if rook_fr != -1:
+            BOARD[rook_tr][rook_tc] = BOARD[rook_fr][rook_fc]
+            BOARD[rook_fr][rook_fc] = '.'
+
     opponent = 'black' if side == 'white' else 'white'
     king_row, king_col = find_king(side)
     in_check = king_row >= 0 and is_square_attacked(king_row, king_col, opponent)
 
     BOARD[move.fr][move.fc] = src_piece
     BOARD[move.tr][move.tc] = dst_piece
+    if rook_fr != -1:
+        BOARD[rook_fr][rook_fc] = BOARD[rook_tr][rook_tc]
+        BOARD[rook_tr][rook_tc] = '.'
     return in_check
 
 
@@ -425,6 +471,7 @@ def order_moves(moves):
 
 
 def minimax(depth, alpha, beta, maximizing):
+    global W_K_CASTLE, W_Q_CASTLE, B_K_CASTLE, B_Q_CASTLE
     if depth == 0:
         return evaluate()
 
@@ -448,10 +495,44 @@ def minimax(depth, alpha, beta, maximizing):
             BOARD[move.tr][move.tc] = move.promo_piece if move.promo_piece != NO_PROMOTION else src_piece
             BOARD[move.fr][move.fc] = '.'
 
+            rook_fr, rook_fc, rook_tr, rook_tc = -1, -1, -1, -1
+            if src_piece.lower() == 'k' and abs(move.tc - move.fc) == 2:
+                if move.tc == 6:
+                    rook_fr, rook_fc, rook_tr, rook_tc = move.fr, 7, move.tr, 5
+                elif move.tc == 2:
+                    rook_fr, rook_fc, rook_tr, rook_tc = move.fr, 0, move.tr, 3
+                if rook_fr != -1:
+                    BOARD[rook_tr][rook_tc] = BOARD[rook_fr][rook_fc]
+                    BOARD[rook_fr][rook_fc] = '.'
+
+            old_wk, old_wq = W_K_CASTLE, W_Q_CASTLE
+            old_bk, old_bq = B_K_CASTLE, B_Q_CASTLE
+
+            if src_piece == 'K': W_K_CASTLE = W_Q_CASTLE = False
+            if src_piece == 'k': B_K_CASTLE = B_Q_CASTLE = False
+            if src_piece == 'R':
+                if move.fr == 7 and move.fc == 0: W_Q_CASTLE = False
+                if move.fr == 7 and move.fc == 7: W_K_CASTLE = False
+            if src_piece == 'r':
+                if move.fr == 0 and move.fc == 0: B_Q_CASTLE = False
+                if move.fr == 0 and move.fc == 7: B_K_CASTLE = False
+            if dst_piece == 'R':
+                if move.tr == 7 and move.tc == 0: W_Q_CASTLE = False
+                if move.tr == 7 and move.tc == 7: W_K_CASTLE = False
+            if dst_piece == 'r':
+                if move.tr == 0 and move.tc == 0: B_Q_CASTLE = False
+                if move.tr == 0 and move.tc == 7: B_K_CASTLE = False
+
             value = minimax(depth - 1, alpha, beta, False)
+
+            W_K_CASTLE, W_Q_CASTLE = old_wk, old_wq
+            B_K_CASTLE, B_Q_CASTLE = old_bk, old_bq
 
             BOARD[move.fr][move.fc] = src_piece
             BOARD[move.tr][move.tc] = dst_piece
+            if rook_fr != -1:
+                BOARD[rook_fr][rook_fc] = BOARD[rook_tr][rook_tc]
+                BOARD[rook_tr][rook_tc] = '.'
 
             best_value = max(best_value, value)
             alpha = max(alpha, value)
@@ -466,10 +547,44 @@ def minimax(depth, alpha, beta, maximizing):
         BOARD[move.tr][move.tc] = move.promo_piece if move.promo_piece != NO_PROMOTION else src_piece
         BOARD[move.fr][move.fc] = '.'
 
+        rook_fr, rook_fc, rook_tr, rook_tc = -1, -1, -1, -1
+        if src_piece.lower() == 'k' and abs(move.tc - move.fc) == 2:
+            if move.tc == 6:
+                rook_fr, rook_fc, rook_tr, rook_tc = move.fr, 7, move.tr, 5
+            elif move.tc == 2:
+                rook_fr, rook_fc, rook_tr, rook_tc = move.fr, 0, move.tr, 3
+            if rook_fr != -1:
+                BOARD[rook_tr][rook_tc] = BOARD[rook_fr][rook_fc]
+                BOARD[rook_fr][rook_fc] = '.'
+
+        old_wk, old_wq = W_K_CASTLE, W_Q_CASTLE
+        old_bk, old_bq = B_K_CASTLE, B_Q_CASTLE
+
+        if src_piece == 'K': W_K_CASTLE = W_Q_CASTLE = False
+        if src_piece == 'k': B_K_CASTLE = B_Q_CASTLE = False
+        if src_piece == 'R':
+            if move.fr == 7 and move.fc == 0: W_Q_CASTLE = False
+            if move.fr == 7 and move.fc == 7: W_K_CASTLE = False
+        if src_piece == 'r':
+            if move.fr == 0 and move.fc == 0: B_Q_CASTLE = False
+            if move.fr == 0 and move.fc == 7: B_K_CASTLE = False
+        if dst_piece == 'R':
+            if move.tr == 7 and move.tc == 0: W_Q_CASTLE = False
+            if move.tr == 7 and move.tc == 7: W_K_CASTLE = False
+        if dst_piece == 'r':
+            if move.tr == 0 and move.tc == 0: B_Q_CASTLE = False
+            if move.tr == 0 and move.tc == 7: B_K_CASTLE = False
+
         value = minimax(depth - 1, alpha, beta, True)
+
+        W_K_CASTLE, W_Q_CASTLE = old_wk, old_wq
+        B_K_CASTLE, B_Q_CASTLE = old_bk, old_bq
 
         BOARD[move.fr][move.fc] = src_piece
         BOARD[move.tr][move.tc] = dst_piece
+        if rook_fr != -1:
+            BOARD[rook_fr][rook_fc] = BOARD[rook_tr][rook_tc]
+            BOARD[rook_tr][rook_tc] = '.'
 
         best_value = min(best_value, value)
         beta = min(beta, value)
@@ -497,6 +612,7 @@ def handle_status(turn):
 
 
 def handle_bestmove(turn, depth):
+    global W_K_CASTLE, W_Q_CASTLE, B_K_CASTLE, B_Q_CASTLE
     maximizing = turn == 'white'
     moves = generate_moves(turn)
     order_moves(moves)
@@ -515,10 +631,44 @@ def handle_bestmove(turn, depth):
         BOARD[move.tr][move.tc] = move.promo_piece if move.promo_piece != NO_PROMOTION else src_piece
         BOARD[move.fr][move.fc] = '.'
 
+        rook_fr, rook_fc, rook_tr, rook_tc = -1, -1, -1, -1
+        if src_piece.lower() == 'k' and abs(move.tc - move.fc) == 2:
+            if move.tc == 6:
+                rook_fr, rook_fc, rook_tr, rook_tc = move.fr, 7, move.tr, 5
+            elif move.tc == 2:
+                rook_fr, rook_fc, rook_tr, rook_tc = move.fr, 0, move.tr, 3
+            if rook_fr != -1:
+                BOARD[rook_tr][rook_tc] = BOARD[rook_fr][rook_fc]
+                BOARD[rook_fr][rook_fc] = '.'
+
+        old_wk, old_wq = W_K_CASTLE, W_Q_CASTLE
+        old_bk, old_bq = B_K_CASTLE, B_Q_CASTLE
+
+        if src_piece == 'K': W_K_CASTLE = W_Q_CASTLE = False
+        if src_piece == 'k': B_K_CASTLE = B_Q_CASTLE = False
+        if src_piece == 'R':
+            if move.fr == 7 and move.fc == 0: W_Q_CASTLE = False
+            if move.fr == 7 and move.fc == 7: W_K_CASTLE = False
+        if src_piece == 'r':
+            if move.fr == 0 and move.fc == 0: B_Q_CASTLE = False
+            if move.fr == 0 and move.fc == 7: B_K_CASTLE = False
+        if dst_piece == 'R':
+            if move.tr == 7 and move.tc == 0: W_Q_CASTLE = False
+            if move.tr == 7 and move.tc == 7: W_K_CASTLE = False
+        if dst_piece == 'r':
+            if move.tr == 0 and move.tc == 0: B_Q_CASTLE = False
+            if move.tr == 0 and move.tc == 7: B_K_CASTLE = False
+
         value = minimax(depth - 1, -(10 ** 9), 10 ** 9, not maximizing)
+
+        W_K_CASTLE, W_Q_CASTLE = old_wk, old_wq
+        B_K_CASTLE, B_Q_CASTLE = old_bk, old_bq
 
         BOARD[move.fr][move.fc] = src_piece
         BOARD[move.tr][move.tc] = dst_piece
+        if rook_fr != -1:
+            BOARD[rook_fr][rook_fc] = BOARD[rook_tr][rook_tc]
+            BOARD[rook_tr][rook_tc] = '.'
 
         if maximizing and value > best_value:
             best_value = value
@@ -535,29 +685,36 @@ def run():
     for command in tokens:
         if command == 'VALIDATE':
             board64 = next(tokens)
+            rights = next(tokens)
             turn = next(tokens)
             fr = int(next(tokens))
             fc = int(next(tokens))
             tr = int(next(tokens))
             tc = int(next(tokens))
             load_board(board64)
+            load_castling_rights(rights)
             validate_move(turn, fr, fc, tr, tc)
         elif command == 'MOVES':
             board64 = next(tokens)
+            rights = next(tokens)
             turn = next(tokens)
             row = int(next(tokens))
             col = int(next(tokens))
             load_board(board64)
+            load_castling_rights(rights)
             handle_moves(turn, row, col)
         elif command == 'ATTACKED':
             board64 = next(tokens)
+            rights = next(tokens)
             attacker_color = next(tokens)
             row = int(next(tokens))
             col = int(next(tokens))
             load_board(board64)
+            load_castling_rights(rights)
             print('YES' if is_square_attacked(row, col, attacker_color) else 'NO')
         elif command == 'PROMOTE':
             board64 = next(tokens)
+            rights = next(tokens)
             turn = next(tokens)
             fr = int(next(tokens))
             fc = int(next(tokens))
@@ -565,17 +722,22 @@ def run():
             tc = int(next(tokens))
             promo_piece = next(tokens)
             load_board(board64)
+            load_castling_rights(rights)
             handle_promote(turn, fr, fc, tr, tc, promo_piece)
         elif command == 'STATUS':
             board64 = next(tokens)
+            rights = next(tokens)
             turn = next(tokens)
             load_board(board64)
+            load_castling_rights(rights)
             handle_status(turn)
         elif command == 'BESTMOVE':
             board64 = next(tokens)
+            rights = next(tokens)
             turn = next(tokens)
             depth = int(next(tokens))
             load_board(board64)
+            load_castling_rights(rights)
             handle_bestmove(turn, depth)
 
 

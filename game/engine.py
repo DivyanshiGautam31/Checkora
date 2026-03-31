@@ -62,6 +62,10 @@ class ChessGame:
         self.last_ts = time.time()
         self.paused = False
         self.mode = 'pvp'
+        self.castling_rights = {
+            'w_k': True, 'w_q': True,
+            'b_k': True, 'b_q': True
+        }
 
     def serialize_board(self):
         """Flatten the 2-D board into a 64-char string for the C++ engine."""
@@ -80,7 +84,8 @@ class ChessGame:
             'black_time': self.black_time,
             'last_ts': self.last_ts,
             'paused': self.paused,
-            'mode': self.mode
+            'mode': self.mode,
+            'castling_rights': self.castling_rights
         }
 
     @classmethod
@@ -96,6 +101,7 @@ class ChessGame:
         game.black_time = data['black_time']
         game.last_ts = data['last_ts']
         game.mode = data.get('mode', 'pvp')
+        game.castling_rights = data.get('castling_rights', {'w_k': True, 'w_q': True, 'b_k': True, 'b_q': True})
 
         cache_data = data.get('valid_moves_cache', {})
         game.valid_moves_cache = {}
@@ -141,6 +147,14 @@ class ChessGame:
         except (subprocess.TimeoutExpired, OSError):
             return None
 
+    def serialize_castling_rights(self):
+        rights = ''
+        if self.castling_rights.get('w_k'): rights += 'K'
+        if self.castling_rights.get('w_q'): rights += 'Q'
+        if self.castling_rights.get('b_k'): rights += 'k'
+        if self.castling_rights.get('b_q'): rights += 'q'
+        return rights if rights else '-'
+
     # ------------------------------------------------------------------
     #  Public API
     # ------------------------------------------------------------------
@@ -156,7 +170,34 @@ class ChessGame:
     def make_move(self, fr, fc, tr, tc, promotion_piece=None):
         """Execute move and invalidate cache to ensure fresh calculations."""
         piece = self.board[fr][fc]
+        if not piece or self._color(piece) != self.current_turn:
+            return False, "Not your piece or empty square", None, 'active'
+
+        is_valid, reason = self.validate_move(fr, fc, tr, tc)
+        if not is_valid:
+            return False, reason, None, 'active'
+
         captured = self.board[tr][tc]
+
+        if piece == 'K':
+            self.castling_rights['w_k'] = False
+            self.castling_rights['w_q'] = False
+        elif piece == 'k':
+            self.castling_rights['b_k'] = False
+            self.castling_rights['b_q'] = False
+        elif piece == 'R':
+            if fr == 7 and fc == 0: self.castling_rights['w_q'] = False
+            elif fr == 7 and fc == 7: self.castling_rights['w_k'] = False
+        elif piece == 'r':
+            if fr == 0 and fc == 0: self.castling_rights['b_q'] = False
+            elif fr == 0 and fc == 7: self.castling_rights['b_k'] = False
+
+        if captured == 'R':
+            if tr == 7 and tc == 0: self.castling_rights['w_q'] = False
+            elif tr == 7 and tc == 7: self.castling_rights['w_k'] = False
+        elif captured == 'r':
+            if tr == 0 and tc == 0: self.castling_rights['b_q'] = False
+            elif tr == 0 and tc == 7: self.castling_rights['b_k'] = False
 
         # Pawn promotion: delegate to C++ engine for validation + board update
         promoted = False
@@ -175,6 +216,13 @@ class ChessGame:
         else:
             self.board[tr][tc] = piece
             self.board[fr][fc] = None
+            if piece.lower() == 'k' and abs(tc - fc) == 2:
+                if tc == 6:
+                    self.board[tr][5] = self.board[tr][7]
+                    self.board[tr][7] = None
+                elif tc == 2:
+                    self.board[tr][3] = self.board[tr][0]
+                    self.board[tr][0] = None
 
         if captured:
             self.captured[self.current_turn].append(captured)
@@ -229,7 +277,8 @@ class ChessGame:
     def _get_engine_moves(self, row, col):
         """Internal helper to fetch piece moves from the C++ binary."""
         board_str = self.serialize_board()
-        cmd = f"MOVES {board_str} {self.current_turn} {row} {col}"
+        rights_str = self.serialize_castling_rights()
+        cmd = f"MOVES {board_str} {rights_str} {self.current_turn} {row} {col}"
         resp = self._call_engine(cmd)
         
         moves = []
@@ -255,7 +304,8 @@ class ChessGame:
         Returns the new 64-char board string on success, or None.
         """
         board_str = self.serialize_board()
-        cmd = f"PROMOTE {board_str} {self.current_turn} {fr} {fc} {tr} {tc} {choice}"
+        rights_str = self.serialize_castling_rights()
+        cmd = f"PROMOTE {board_str} {rights_str} {self.current_turn} {fr} {fc} {tr} {tc} {choice}"
         resp = self._call_engine(cmd)
         if resp and resp.startswith("PROMOTE"):
             return resp.split()[1]
@@ -336,7 +386,8 @@ class ChessGame:
         Returns one of: 'checkmate', 'stalemate', 'check', 'ok'.
         """
         board_str = self.serialize_board()
-        cmd = f"STATUS {board_str} {self.current_turn}"
+        rights_str = self.serialize_castling_rights()
+        cmd = f"STATUS {board_str} {rights_str} {self.current_turn}"
         resp = self._call_engine(cmd)
         if resp and resp.startswith("STATUS"):
             status = resp.split()[1].lower()
@@ -357,7 +408,8 @@ class ChessGame:
         legal move exists (checkmate / stalemate).
         """
         board_str = self.serialize_board()
-        cmd = f"BESTMOVE {board_str} {self.current_turn} {self.AI_SEARCH_DEPTH}"
+        rights_str = self.serialize_castling_rights()
+        cmd = f"BESTMOVE {board_str} {rights_str} {self.current_turn} {self.AI_SEARCH_DEPTH}"
         resp = self._call_engine(cmd)
 
         if not resp or not resp.startswith("BESTMOVE"):
