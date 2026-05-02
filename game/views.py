@@ -87,9 +87,12 @@ def new_game(request):
     """Reset the game to the initial position with selected mode."""
     data = json.loads(request.body or '{}')
     mode = data.get('mode', 'pvp')
+    player_color = data.get('player_color', 'white')
     
     game = ChessGame()
     game.mode = mode
+    game.player_color = player_color
+    game.paused = False
     
     request.session['game'] = game.to_dict()
     request.session.modified = True
@@ -99,7 +102,8 @@ def new_game(request):
         'current_turn': game.current_turn,
         'move_history': [],
         'captured_pieces': {'white': [], 'black': []},
-        'mode': game.mode
+        'mode': game.mode,
+        'player_color': game.player_color
     })
 
 @require_GET
@@ -141,7 +145,7 @@ def get_state(request):
             game.update_clock()
 
     # Always start in paused state on page load/refresh
-    game.paused = True
+    game.paused = False
     game.last_ts = time.time()
 
     request.session['game'] = game.to_dict()
@@ -156,6 +160,7 @@ def get_state(request):
         'move_history': game.move_history,
         'captured_pieces': game.captured,
         'mode': game.mode,
+        'player_color': game.player_color,
     })
 
 @csrf_exempt
