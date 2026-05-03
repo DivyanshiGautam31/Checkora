@@ -680,6 +680,8 @@
             if (response.valid) {
                 gameOver = true;
                 paused = true;
+        
+                clearInterval(timerInterval);
 
                 const wName = document.getElementById('whiteNameLabel').textContent;
                 const bName = document.getElementById('blackNameLabel').textContent;
