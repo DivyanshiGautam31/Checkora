@@ -14,7 +14,6 @@ from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
 from django.core.mail import send_mail
 from django.contrib import messages
 from django import forms
-import random
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
