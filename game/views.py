@@ -96,15 +96,16 @@ def new_game(request):
     """Reset the game to the initial position with selected mode."""
     data = json.loads(request.body or '{}')
     mode = data.get('mode', 'pvp')
+    difficulty = data.get('difficulty', 'medium')
+    
     if mode not in ('pvp', 'ai'):
         mode = 'pvp'
     
     player_color = data.get('player_color', 'white')
 
-    # --- Capture and store names in the session ---
-    # We use .get('key', 'Default') so it never crashes
     request.session['white_name'] = data.get('white_name', 'White')
     request.session['black_name'] = data.get('black_name', 'Black')
+    request.session['difficulty'] = difficulty
 
     game = ChessGame()
     game.mode = mode
@@ -123,6 +124,7 @@ def new_game(request):
         # We send names back just to confirm they were saved
         'white_name': request.session['white_name'],
         'black_name': request.session['black_name'],
+        'difficulty': difficulty,
     })
 
 
@@ -231,7 +233,12 @@ def ai_move(request):
             {'valid': False, 'message': err_msg}, status=400
         )
 
-    best = game.get_ai_move()
+    # Depth Mapping
+    difficulty = request.session.get('difficulty', 'medium')
+    depth_map = {'easy': 2, 'medium': 3, 'hard': 5}
+    depth = depth_map.get(difficulty, 3)
+
+    best = game.get_ai_move(depth=depth)
     if not best:
         return JsonResponse({
             'valid': False,
