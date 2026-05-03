@@ -246,3 +246,29 @@ def offer_draw(request):
         return JsonResponse({'success': True, 'game_status': 'draw_agreement'})
     
     return JsonResponse({'success': True})
+
+@require_POST
+def resign_game(request):
+    """Handle a player resigning the game."""
+    game_data = request.session.get('game')
+    if not game_data:
+        return JsonResponse({'valid': False, 'message': 'No active game.'}, status=400)
+
+    game = ChessGame.from_dict(game_data)
+
+    resigning_player = game.current_turn
+    winner = 'black' if resigning_player == 'white' else 'white'
+
+    game_status = f"Resignation: {winner.capitalize()} wins!"
+    
+    # Update game status in session
+    game_data['game_status'] = game_status
+    request.session['game'] = game.to_dict()
+    request.session.modified = True
+
+    return JsonResponse({
+        'valid': True,
+        'message': f'{resigning_player.capitalize()} resigned.',
+        'winner': winner,
+        'game_status': game_status
+    })
