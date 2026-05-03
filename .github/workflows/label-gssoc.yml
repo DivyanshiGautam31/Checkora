@@ -18,18 +18,37 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const issue_number = context.payload.issue.number;
+            
             const label = 'GSSoC';
-            const color = '#FD873D';
+            const color = 'FD873D'; 
             const description = 'Under GirlScript Summer of Code';
-
+            
             try {
-              await github.rest.issues.getLabel({ owner, repo, name: label });
+              await github.rest.issues.updateLabel({
+                owner,
+                repo,
+                name: label,
+                new_name: label,
+                color,
+                description
+              });
             } catch (err) {
               if (err.status === 404) {
-                await github.rest.issues.createLabel({ owner, repo, name: label, color, description });
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name: label,
+                  color,
+                  description
+                });
               } else {
                 throw err;
               }
             }
-
-            await github.rest.issues.addLabels({ owner, repo, issue_number, labels: [label] });
+            
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number,
+              labels: [label]
+            });
