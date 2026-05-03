@@ -19,8 +19,8 @@ jobs:
             const repo = context.repo.repo;
             const issue_number = context.payload.issue.number;
             const label = 'GSSoC';
-            const color = 'FF7A00';
-            const description = 'GirlScript Summer of Code';
+            const color = '#D97706';
+            const description = 'Under GirlScript Summer of Code';
 
             try {
               await github.rest.issues.getLabel({ owner, repo, name: label });
