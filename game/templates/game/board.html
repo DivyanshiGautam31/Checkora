@@ -251,6 +251,8 @@
             let pendingPromo = null;
 
             let gameMode = 'pvp';
+let whiteName = 'White';
+let blackName = 'Black';
 
             /* ==========================================================
             DOM REFERENCES
@@ -626,9 +628,8 @@
             UI UPDATES
             ========================================================== */
             function updateTurn() {
-                turnEl.textContent = turn === 'white' ? "White's Turn" : "Black's Turn";
-                turnEl.className = 'turn-badge ' + turn;
-                document.getElementById('whiteClock').classList.toggle('active', turn === 'white');
+const capitalize = name => name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+turnEl.textContent = turn === 'white' ? `${capitalize(whiteName)}'s Turn` : `${capitalize(blackName)}'s Turn`;                document.getElementById('whiteClock').classList.toggle('active', turn === 'white');
                 document.getElementById('blackClock').classList.toggle('active', turn === 'black');
                 markPlayable();
                 if (!gameOver) {
@@ -785,26 +786,34 @@
                 );
             }
 
-            async function startNewGame(mode) {
-                const d = await post('/api/new-game/', { mode: mode });
-                board = d.board;
-                turn = d.current_turn;
-                paused = false;
-                gameOver = false;
-                gameMode = d.mode;
-
-                if (modeBadge) modeBadge.textContent = gameMode === 'ai' ? 'VS AI' : 'PVP';
-                movesEl.innerHTML = '<span class="placeholder">No moves yet</span>';
-                wCapEl.innerHTML = bCapEl.innerHTML = '';
-
-                loadGame();
-            }
+           async function startNewGame(mode) {
+    whiteName = document.getElementById('whiteNameInput').value.trim() || 'White';
+    blackName = document.getElementById('blackNameInput').value.trim() || 'Black';
+    const wName = whiteName;
+    const bName = blackName;
+    const d = await post('/api/new-game/', { mode: mode, white_name: wName, black_name: bName });
+    board = d.board;
+    turn = d.current_turn;
+    paused = false;
+    gameOver = false;
+    gameMode = d.mode;
+    document.getElementById('whiteNameLabel').textContent = wName.toUpperCase();
+    document.getElementById('blackNameLabel').textContent = bName.toUpperCase();
+    const cap = name => name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+document.getElementById('whiteCapturedName').textContent = cap(wName);
+document.getElementById('blackCapturedName').textContent = cap(bName);
+    document.getElementById('turnBadgeText') && (document.getElementById('turnBadgeText').textContent = turn === 'white' ? wName : bName);
+    if (modeBadge) modeBadge.textContent = gameMode === 'ai' ? 'VS AI' : 'PVP';
+    movesEl.innerHTML = '<span class="placeholder">No moves yet</span>';
+    wCapEl.innerHTML = bCapEl.innerHTML = '';
+    loadGame();
+}
 
             /* ==========================================================
             EVENT LISTENERS
             ========================================================== */
-            if (welcomePvPBtn) welcomePvPBtn.onclick = () => { welcomeOverlay.classList.remove('active'); startNewGame('pvp'); };
-            if (welcomeAIBtn) welcomeAIBtn.onclick = () => { welcomeOverlay.classList.remove('active'); startNewGame('ai'); };
+           if (welcomePvPBtn) welcomePvPBtn.onclick = () => { startNewGame('pvp').then(() => welcomeOverlay.classList.remove('active')); };
+if (welcomeAIBtn) welcomeAIBtn.onclick = () => { startNewGame('ai').then(() => welcomeOverlay.classList.remove('active')); };
             if (welcomeResumeBtn) welcomeResumeBtn.onclick = () => {
                 welcomeOverlay.classList.remove('active');
                 if (paused) resumeGame();
