@@ -67,6 +67,7 @@ def make_move(request):
         'move_history': game.move_history,
         'captured_pieces': game.captured,
         'game_status': game_status,
+        'fen': game.generate_fen_key(),
     })
 
 
@@ -103,10 +104,14 @@ def new_game(request):
 
     request.session['white_name'] = data.get('white_name', 'White')
     request.session['black_name'] = data.get('black_name', 'Black')
+    player_color = data.get('player_color', 'white')
     request.session['difficulty'] = difficulty
+    request.session['player_color'] = player_color
 
     game = ChessGame()
     game.mode = mode
+    game.player_color = player_color
+    game.paused = False
 
     request.session['game'] = game.to_dict()
     request.session.modified = True
@@ -117,9 +122,11 @@ def new_game(request):
         'move_history': [],
         'captured_pieces': {'white': [], 'black': []},
         'mode': game.mode,
+        'player_color': game.player_color,
         'white_name': request.session['white_name'],
         'black_name': request.session['black_name'],
         'difficulty': difficulty,
+        'fen': game.generate_fen_key(),
     })
 
 
@@ -178,8 +185,10 @@ def get_state(request):
         'move_history': game.move_history,
         'captured_pieces': game.captured,
         'mode': game.mode,
+        'player_color': game.player_color,
         'white_name': request.session.get('white_name', 'White'),
         'black_name': request.session.get('black_name', 'Black'),
+        'fen': game.generate_fen_key(),
     })
 
 
@@ -262,6 +271,7 @@ def ai_move(request):
         'captured_pieces': game.captured,
         'ai_move': best,
         'game_status': game_status,
+        'fen': game.generate_fen_key(),
     })
 
 
